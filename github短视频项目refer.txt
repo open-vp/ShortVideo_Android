@@ -1,0 +1,16 @@
+短视频开源项目
+https://github.com/qqchenjian318/VideoEditor-For-Android
+https://github.com/pepsikirk/PKShortVideo
+https://github.com/AndyFightting/VideoRecord
+https://github.com/ShelinShelin/VideoEditing
+https://github.com/xujingzhou/VideoBeautify  ios
+https://github.com/mabeijianxi/small-video-record/blob/master/document/README_CH.md   android
+https://github.com/JaySardhara/Video-Editor      ffmpeg
+https://github.com/runner365/GPUImageRtmpPush    GPUImage user
+https://github.com/Windsander/Android-UltimateGPUImage
+https://github.com/SingleShu/VideoRecord
+https://github.com/ChillingVan/AndroidInstantVideo
+
+商业sdk项目
+https://github.com/ksvc/KSYMediaEditorKit_iOS 金山云
+https://github.com/pili-engineering/PLDroidShortVideo  七牛
