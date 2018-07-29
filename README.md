@@ -13,7 +13,7 @@ android短视频录制功能
 
 mVPRecord.setOrientation(VIDOE_ORIENTATION_FULL);  
 
-//设置视频录制比例：3 ：4      9 ：1 6      1 ：1
+//设置视频录制比例        3:4          9:16          1:1
 
 mVPRecord.setAspectRatio(VIDEO_RATIO_9_16); 
 
