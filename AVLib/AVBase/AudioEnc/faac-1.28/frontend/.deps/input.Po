@@ -1,0 +1,5 @@
+input.o: input.c ../config.h input.h
+
+../config.h:
+
+input.h:

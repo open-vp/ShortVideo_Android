@@ -1,0 +1,12 @@
+main.o: main.c ../config.h getopt.h input.h ../include/faac.h \
+ ../include/faaccfg.h
+
+../config.h:
+
+getopt.h:
+
+input.h:
+
+../include/faac.h:
+
+../include/faaccfg.h:

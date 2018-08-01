@@ -1,0 +1,7 @@
+midside.lo: midside.c channels.h coder.h util.h
+
+channels.h:
+
+coder.h:
+
+util.h:
