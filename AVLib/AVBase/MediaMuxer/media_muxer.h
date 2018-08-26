@@ -5,6 +5,7 @@
 #define _MEDIA_MUXER_H
 
 #include "base.h"
+#include "user_arguments.h"
 #define USE_H264BSF 1
 #define USE_AACBSF 1
 

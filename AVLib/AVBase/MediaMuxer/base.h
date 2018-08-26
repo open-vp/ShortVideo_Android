@@ -1,8 +1,8 @@
 /** 
  */
 
-#ifndef _AV_BASE_H
-#define _AV_BASE_H
+#ifndef _BASE_H
+#define _BASE_H
 
 extern "C"
 {
@@ -11,17 +11,25 @@ extern "C"
 #include "include/libavcodec/avcodec.h"
 }
 
-#include "thread_queue.h"
 #include <jni.h>
 #include <string>
+#include <stdlib.h>
+#include <unistd.h>
+#include <list>
 #include <android/log.h>
 
-//extern int JNI_DEBUG;
+#include "wlock.h"
+//#include "wbufferpool.h"
 
-#define LOGE(debug, format, ...) if(debug){__android_log_print(ANDROID_LOG_ERROR, "jianxi_ffmpeg", format, ##__VA_ARGS__);}
-#define LOGI(debug, format, ...) if(debug){__android_log_print(ANDROID_LOG_INFO, "jianxi_ffmpeg", format, ##__VA_ARGS__);}
 
-int JNI_DEBUG= 1;
+
+using namespace std;
+using namespace OPENVP;
+
+
+
+#define LOGE(debug, format, ...) if(debug){__android_log_print(ANDROID_LOG_ERROR, "openvp_AVBase", format, ##__VA_ARGS__);}
+#define LOGI(debug, format, ...) if(debug){__android_log_print(ANDROID_LOG_INFO, "openvp_AVBase", format, ##__VA_ARGS__);}
 
 #define END_STATE 1
 #define START_STATE 0
@@ -41,7 +49,30 @@ int JNI_DEBUG= 1;
  */
 #define ROTATE_270_CROP_LT_MIRROR_LR 3
 
-using namespace std;
+enum ENC_DATA_TYPE{
+    VIDEO_DATA,
+    AUDIO_DATA,
+    META_DATA
+};
+
+typedef struct EncData
+{
+	EncData(void) :_data(NULL), _dataLen(0),
+		_bVideo(false), _dts(0) {}
+	uint8_t*_data;
+	int _dataLen;
+	bool _bVideo;
+	uint32_t _dts;
+	ENC_DATA_TYPE _type;
+}EncData;
 
 
-#endif //_AV_BASE_H
+
+//typedef WFlexBuffer							CMediaBuffer;
+//typedef WPoolTemplate<CMediaBuffer>			CMediaBufferPool;
+//typedef WElementAllocator<CMediaBuffer>		MediaBufferAllocator;
+//typedef std::list<CMediaBuffer*>			MediaBufferList;
+
+
+
+#endif //_BASE_H

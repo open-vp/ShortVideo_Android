@@ -1,5 +1,0 @@
-fft.lo: fft.c fft.h util.h
-
-fft.h:
-
-util.h:

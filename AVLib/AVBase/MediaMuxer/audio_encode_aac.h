@@ -1,42 +1,49 @@
+#ifndef OPENVP_AUDIO_ENCODE_AAC_H
+#define OPENVP_AUDIO_ENCODE_AAC_H
 
-/**
- * Created by jianxi on 2017/5/18.
- * https://github.com/mabeijianxi
- * mabeijianxi@gmail.com
- */
-#ifndef JIANXIFFMPEG_JX_PCM_ENCODE_AAC_H
-#define JIANXIFFMPEG_JX_PCM_ENCODE_AAC_H
+#include "wlock.h"
+#include "base.h"
+#include "user_arguments.h"
 
-
-#include "base_include.h"
-#include "jx_user_arguments.h"
-using namespace std;
+using namespace OPENVP;
 
 /**
  * pcm编码为aac
  */
-class JXPCMEncodeAAC {
+class AudioEncodeAAC {
 public:
-    JXPCMEncodeAAC(UserArguments* arg);
+    AudioEncodeAAC(UserArguments* arg);
 public:
     int initAudioEncoder();
 
-    static void* startEncode(void* obj);
+    int startEncode();
+	
+    bool StartThread();
+
+    void StopThread();
+    
+    
+    pthread_t   m_thrd = 0;
+    int m_dwExitCode = 0;
 
     void user_end();
 
     void release();
 
-    int sendOneFrame(uint8_t* buf);
+    void sendAudioFrame(uint8_t* buf,int dataLen);
 
     int encodeEnd();
-    ~JXPCMEncodeAAC() {
+    ~AudioEncodeAAC() {
     }
+
 private:
     int flush_encoder(AVFormatContext *fmt_ctx, unsigned int stream_index);
 
 private:
-    threadsafe_queue<uint8_t *> frame_queue;
+    WLock	cs_list_enc_;
+    std::list<EncData*>		lst_enc_data_;
+    //CMediaBufferPool		m_AudioBufferPool;
+	
     AVFormatContext *pFormatCtx;
     AVOutputFormat *fmt;
     AVStream *audio_st;
@@ -51,10 +58,10 @@ private:
     int size = 0;
 
     int i;
-    int is_end=JX_FALSE;
-    int is_release=JX_FALSE;
+    int is_end=false;
+    int is_release=false;
     UserArguments *arguments;
 
 };
 
-#endif //JIANXIFFMPEG_JX_PCM_ENCODE_AAC_H
+#endif //OPENVP_AUDIO_ENCODE_AAC_H

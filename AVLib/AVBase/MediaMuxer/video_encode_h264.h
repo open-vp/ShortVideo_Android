@@ -1,16 +1,9 @@
-
-/**
- */
 #ifndef _VIDEO_ENCODE_H264_H
 #define _VIDEO_ENCODE_H264_H
 
-
-
 #include "base.h"
+#include "user_arguments.h"
 
-//#include "user_arguments.h"
-
-using namespace std;
 /**
  * 编码h264
  */
@@ -20,9 +13,17 @@ public:
 public:
     int initVideoEncoder();
 
-    static void* startEncode(void * obj);
+    int startEncode();
 
-    int startSendOneFrame(uint8_t *buf);
+    void sendVideoFrame(uint8_t* buf,int dataLen);
+	
+    bool StartThread();
+
+    void StopThread();
+ 
+    pthread_t   m_thrd = 0;
+
+    int m_dwExitCode = 0;
 
     void user_end();
 
@@ -30,19 +31,20 @@ public:
 
     int encodeEnd();
 
-    void custom_filter(const YUVEncodeH264 *h264_encoder, const uint8_t *picture_buf,
+    void custom_filter(const VideoEncodeH264 *h264_encoder, const uint8_t *picture_buf,
                        int in_y_size,
                        int format);
-    ~YUVEncodeH264() {
+    ~VideoEncodeH264() {
     }
 private:
     int flush_encoder(AVFormatContext *fmt_ctx, unsigned int stream_index);
 
 private:
-    //UserArguments *arguments;
+    UserArguments *arguments;
     int is_end = 0;
     int is_release = 0;
-    threadsafe_queue<uint8_t *> frame_queue;
+    WLock	cs_list_enc_;
+    std::list<EncData*>		lst_enc_data_;
     AVFormatContext *pFormatCtx;
     AVOutputFormat *fmt;
     AVStream *video_st;

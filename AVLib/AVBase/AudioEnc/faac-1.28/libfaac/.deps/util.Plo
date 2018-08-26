@@ -1,5 +1,0 @@
-util.lo: util.c util.h coder.h
-
-util.h:
-
-coder.h:

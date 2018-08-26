@@ -5,7 +5,8 @@
 extern "C"
 {
 }
-#include "vp_log.h"
+
+int JNI_DEBUG = 1;
 
 int MediaMuxer::startMuxer( const char *in_filename_v, const char *in_filename_a,const char *out_filename) {
 
@@ -35,30 +36,30 @@ int MediaMuxer::startMuxer( const char *in_filename_v, const char *in_filename_a
     av_register_all();
     //Input
     if ((ret = avformat_open_input(&ifmt_ctx_v, in_filename_v, 0, 0)) < 0) {
-        LOGE(JNI_DEBUG,"jianxi_ffmpeg Could not open input file.");
+        LOGE(1,"ffmpeg Could not open input file.");
 
     }
     if ((ret = avformat_find_stream_info(ifmt_ctx_v, 0)) < 0) {
-        LOGE(JNI_DEBUG,"jianxi_ffmpeg Failed to retrieve input stream information");
+        LOGE(1,"ffmpeg Failed to retrieve input stream information");
 
     }
 
     if ((ret = avformat_open_input(&ifmt_ctx_a, in_filename_a, 0, 0)) < 0) {
-        LOGE(JNI_DEBUG,"jianxi_ffmpeg Could not open input file.");
+        LOGE(1,"ffmpeg Could not open input file.");
 
     }
     if ((ret = avformat_find_stream_info(ifmt_ctx_a, 0)) < 0) {
-        LOGE(JNI_DEBUG,"jianxi_ffmpeg Failed to retrieve input stream information");
+        LOGE(1,"ffmpeg Failed to retrieve input stream information");
 
     }
-    LOGE(JNI_DEBUG,"===========Input Information==========\n");
+    LOGE(1,"===========Input Information==========\n");
     av_dump_format(ifmt_ctx_v, 0, in_filename_v, 0);
     av_dump_format(ifmt_ctx_a, 0, in_filename_a, 0);
-    LOGE(JNI_DEBUG,"======================================\n");
+    LOGE(1,"======================================\n");
     //Output
     avformat_alloc_output_context2(&ofmt_ctx, NULL, NULL, out_filename);
     if (!ofmt_ctx) {
-        LOGE(JNI_DEBUG,"jianxi_ffmpeg Could not create output context\n");
+        LOGE(1,"ffmpeg Could not create output context\n");
         ret = AVERROR_UNKNOWN;
 
     }
@@ -71,14 +72,14 @@ int MediaMuxer::startMuxer( const char *in_filename_v, const char *in_filename_a
             AVStream *out_stream = avformat_new_stream(ofmt_ctx, in_stream->codec->codec);
             videoindex_v=i;
             if (!out_stream) {
-                LOGE(JNI_DEBUG,"jianxi_ffmpeg Failed allocating output stream\n");
+                LOGE(1,"ffmpeg Failed allocating output stream\n");
                 ret = AVERROR_UNKNOWN;
 
             }
             videoindex_out=out_stream->index;
             //Copy the settings of AVCodecContext
             if (avcodec_copy_context(out_stream->codec, in_stream->codec) < 0) {
-                LOGE(JNI_DEBUG,"jianxi_ffmpeg Failed to copy context from input to output stream codec context\n");
+                LOGE(1,"ffmpeg Failed to copy context from input to output stream codec context\n");
 
             }
             out_stream->codec->codec_tag = 0;
@@ -95,14 +96,14 @@ int MediaMuxer::startMuxer( const char *in_filename_v, const char *in_filename_a
             AVStream *out_stream = avformat_new_stream(ofmt_ctx, in_stream->codec->codec);
             audioindex_a=i;
             if (!out_stream) {
-                LOGE(JNI_DEBUG,"jianxi_ffmpeg Failed allocating output stream\n");
+                LOGE(1,"ffmpeg Failed allocating output stream\n");
                 ret = AVERROR_UNKNOWN;
 
             }
             audioindex_out=out_stream->index;
             //Copy the settings of AVCodecContext
             if (avcodec_copy_context(out_stream->codec, in_stream->codec) < 0) {
-                LOGE(JNI_DEBUG,"jianxi_ffmpeg Failed to copy context from input to output stream codec context\n");
+                LOGE(1,"ffmpeg Failed to copy context from input to output stream codec context\n");
 
             }
             out_stream->codec->codec_tag = 0;
@@ -113,19 +114,19 @@ int MediaMuxer::startMuxer( const char *in_filename_v, const char *in_filename_a
         }
     }
 
-    LOGE(JNI_DEBUG,"==========Output Information==========\n");
+    LOGE(1,"==========Output Information==========\n");
     av_dump_format(ofmt_ctx, 0, out_filename, 1);
-    LOGE(JNI_DEBUG,"======================================\n");
+    LOGE(1,"======================================\n");
     //Open output file
     if (!(ofmt->flags & AVFMT_NOFILE)) {
         if (avio_open(&ofmt_ctx->pb, out_filename, AVIO_FLAG_WRITE) < 0) {
-            LOGE(JNI_DEBUG,"jianxi_ffmpeg Could not open output file '%s'", out_filename);
+            LOGE(1,"ffmpeg Could not open output file '%s'", out_filename);
 
         }
     }
     //Write file header
     if (avformat_write_header(ofmt_ctx, NULL) < 0) {
-        LOGE(JNI_DEBUG,"jianxi_ffmpeg Error occurred when opening output file\n");
+        LOGE(1,"ffmpeg Error occurred when opening output file\n");
 
     }
 
@@ -225,10 +226,10 @@ int MediaMuxer::startMuxer( const char *in_filename_v, const char *in_filename_a
         pkt.pos = -1;
         pkt.stream_index=stream_index;
 
-        LOGE(JNI_DEBUG,"Write 1 Packet. size:%5d\tpts:%lld\n",pkt.size,pkt.pts);
+        LOGE(1,"Write 1 Packet. size:%5d\tpts:%lld\n",pkt.size,pkt.pts);
         //Write
         if (av_interleaved_write_frame(ofmt_ctx, &pkt) < 0) {
-            LOGE(JNI_DEBUG,"jianxi_ffmpeg Error muxing packet\n");
+            LOGE(1,"ffmpeg Error muxing packet\n");
             break;
         }
         av_free_packet(&pkt);
@@ -247,17 +248,17 @@ int MediaMuxer::startMuxer( const char *in_filename_v, const char *in_filename_a
 //    recordEnd:
     avformat_close_input(&ifmt_ctx_v);
     avformat_close_input(&ifmt_ctx_a);
-    *//* close output *//*
-    if (ofmt_ctx && !(ofmt->flags & AVFMT_NOFILE))
-        avio_close(ofmt_ctx->pb);
+    avio_close(ofmt_ctx->pb);
     avformat_free_context(ofmt_ctx);
     if (ret < 0 && ret != AVERROR_EOF) {
-        LOGE(JNI_DEBUG,"jianxi_ffmpeg Error occurred.\n");
+        LOGE(1,"ffmpeg Error occurred.\n");
         return -1;
     }
-    return 0;*/
+    return 0;
 }
 
+
+#if 0
 
 /**
  * 改变视频录制状态
@@ -280,10 +281,10 @@ void MediaMuxer::setup_audio_state(int audio_state) {
  * @return
  */
 int MediaMuxer::try_encode_over(UserArguments *arguments) {
-    if (audio_state == END_STATE && video_state == END_STATE) {
-        start_muxer(arguments);
-        return END_STATE;
-    }
+    //if (audio_state == END_STATE && video_state == END_STATE) {
+    //    start_muxer(arguments);
+    //    return END_STATE;
+    //}
     return 0;
 }
 
@@ -311,7 +312,7 @@ void MediaMuxer::end_notify(UserArguments *arguments) {
         JNIEnv *env;
         status = arguments->javaVM->AttachCurrentThread(&env, NULL);
         if (status < 0) {
-            LOGE(JNI_DEBUG,"callback_handler: failed to attach "
+            LOGE(1,"callback_handler: failed to attach "
                          "current thread");
             return;
         }
@@ -319,21 +320,22 @@ void MediaMuxer::end_notify(UserArguments *arguments) {
         jmethodID pID = env->GetStaticMethodID(arguments->java_class, "notifyState", "(IF)V");
 
         if (pID == NULL) {
-            LOGE(JNI_DEBUG,"callback_handler: failed to get method ID");
+            LOGE(1,"callback_handler: failed to get method ID");
             arguments->javaVM->DetachCurrentThread();
             return;
         }
 
         env->CallStaticVoidMethod(arguments->java_class, pID, END_STATE, 0);
         env->DeleteGlobalRef(arguments->java_class);
-        LOGI(JNI_DEBUG,"啦啦啦---succeed");
+        LOGI(1,"---succeed");
         arguments->javaVM->DetachCurrentThread();
 
     }
     catch (exception e) {
-        LOGI(JNI_DEBUG,"反射回调失败");
+        LOGI(1,"call fail");
     }
 
     delete (arguments);
     delete(this);
 }
+#endif

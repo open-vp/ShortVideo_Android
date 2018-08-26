@@ -1,9 +1,43 @@
-
 /**
 
  */
 #include "video_encode_h264.h"
 #include <pthread.h>
+
+extern "C"
+{
+static void* VideoThreadProc( void* arg )
+{
+	VideoEncodeH264 *pThread = (VideoEncodeH264 *)arg;
+
+	int dwRet = pThread->startEncode();
+	pThread->m_dwExitCode = dwRet;
+
+	return 0;
+}
+}
+
+bool VideoEncodeH264::StartThread()
+{
+	if (!m_thrd ){ 
+		int nRet = pthread_create( &m_thrd,0,VideoThreadProc,this );
+		if( nRet != 0 )
+			return false;
+	}
+	return	m_thrd != 0;
+}
+
+void VideoEncodeH264::StopThread()
+{
+	if ( m_thrd ){
+		
+		void *ignore = 0;
+		pthread_join( m_thrd,&ignore );
+		pthread_detach( m_thrd );
+	}
+
+	m_thrd=0;
+}
 
 VideoEncodeH264::VideoEncodeH264(UserArguments *arg) : arguments(arg) {
 
@@ -35,7 +69,7 @@ int VideoEncodeH264::flush_encoder(AVFormatContext *fmt_ctx, unsigned int stream
             ret = 0;
             break;
         }
-        LOGI(JNI_DEBUG, "_Flush Encoder: Succeed to encode 1 frame video!\tsize:%5d\n",
+        LOGI(1, "_Flush Encoder: Succeed to encode 1 frame video!\tsize:%5d\n",
              enc_pkt.size);
         /* mux encoded frame */
         ret = av_write_frame(fmt_ctx, &enc_pkt);
@@ -51,7 +85,7 @@ int VideoEncodeH264::flush_encoder(AVFormatContext *fmt_ctx, unsigned int stream
  * @return
  */
 int VideoEncodeH264::initVideoEncoder() {
-    LOGI(JNI_DEBUG, "视频编码器初始化开始")
+    LOGI(1, "视频编码器初始化开始")
 
     size_t path_length = strlen(arguments->video_path);
     char *out_file = (char *) malloc(path_length + 1);
@@ -64,7 +98,7 @@ int VideoEncodeH264::initVideoEncoder() {
 
     //Open output URL
     if (avio_open(&pFormatCtx->pb, out_file, AVIO_FLAG_READ_WRITE) < 0) {
-        LOGE(JNI_DEBUG, "_Failed to open output file! \n");
+        LOGE(1, "_Failed to open output file! \n");
         return -1;
     }
 
@@ -73,7 +107,7 @@ int VideoEncodeH264::initVideoEncoder() {
     //video_st->time_base.den = 25;
 
     if (video_st == NULL) {
-        LOGE(JNI_DEBUG, "_video_st==null");
+        LOGE(1, "_video_st==null");
         return -1;
     }
 
@@ -115,7 +149,7 @@ int VideoEncodeH264::initVideoEncoder() {
 //        av_dict_set(&param, "tune", "animation", 0);
 //        av_dict_set(&param, "profile", "baseline", 0);
         av_dict_set(&param, "tune", "zerolatency", 0);
-        av_opt_set(pCodecCtx->priv_data, "preset", "ultrafast", 0);
+        //av_opt_set(pCodecCtx->priv_data, "preset", "ultrafast", 0);
         av_dict_set(&param, "profile", "baseline", 0);
     }
 
@@ -124,18 +158,18 @@ int VideoEncodeH264::initVideoEncoder() {
 
     pCodec = avcodec_find_encoder(pCodecCtx->codec_id);
     if (!pCodec) {
-        LOGE(JNI_DEBUG, "Can not find encoder! \n");
+        LOGE(1, "Can not find encoder! \n");
         return -1;
     }
     if (avcodec_open2(pCodecCtx, pCodec, &param) < 0) {
-        LOGE(JNI_DEBUG, "Failed to open encoder! \n");
+        LOGE(1, "Failed to open encoder! \n");
         return -1;
     }
 
 
     pFrame = av_frame_alloc();
     picture_size = avpicture_get_size(pCodecCtx->pix_fmt, pCodecCtx->width, pCodecCtx->height);
-    LOGI(JNI_DEBUG, "   picture_size:%d", picture_size);
+    LOGI(1, "picture_size:%d", picture_size);
     uint8_t *buf = (uint8_t *) av_malloc(picture_size);
     avpicture_fill((AVPicture *) pFrame, buf, pCodecCtx->pix_fmt, pCodecCtx->width,
                    pCodecCtx->height);
@@ -145,10 +179,10 @@ int VideoEncodeH264::initVideoEncoder() {
     av_new_packet(&pkt, picture_size);
     out_y_size = pCodecCtx->width * pCodecCtx->height;
     is_end = START_STATE;
-    pthread_t thread;
-    pthread_create(&thread, NULL, VideoEncodeH264::startEncode, this);
+    
+	StartThread();
 
-    LOGI(JNI_DEBUG, "视频编码器初始化完成")
+    LOGI(1, "视频编码器初始化完成")
 
     return 0;
 }
@@ -158,15 +192,18 @@ int VideoEncodeH264::initVideoEncoder() {
  * @param buf
  * @return
  */
-int VideoEncodeH264::startSendOneFrame(uint8_t *buf) {
-    int in_y_size = arguments->in_width * arguments->in_height;
+void VideoEncodeH264::sendVideoFrame(uint8_t* buf,int dataLen)
+{
 
-    uint8_t *new_buf = (uint8_t *) malloc(in_y_size * 3 / 2);
-    memcpy(new_buf, buf, in_y_size * 3 / 2);
-
-    frame_queue.push(new_buf);
-
-    return 0;
+	EncData* pdata = new EncData();
+	pdata->_data = new uint8_t[dataLen];
+	memcpy(pdata->_data, buf, dataLen);
+	pdata->_dataLen = dataLen;
+	pdata->_bVideo = true;
+	pdata->_type = VIDEO_DATA;
+	//pdata->_dts = ts;
+	WAutoLock l(&cs_list_enc_);
+	lst_enc_data_.push_back(pdata);
 }
 
 /**
@@ -174,57 +211,62 @@ int VideoEncodeH264::startSendOneFrame(uint8_t *buf) {
  * @param obj
  * @return
  */
-void *VideoEncodeH264::startEncode(void *obj) {
-    VideoEncodeH264 *h264_encoder = (VideoEncodeH264 *) obj;
-    while (!h264_encoder->is_end||!h264_encoder->frame_queue.empty()) {
-        if(h264_encoder->is_release){
+int VideoEncodeH264::startEncode() {
+    while (!is_end) {
+        if(is_release){
             //Write file trailer
-            av_write_trailer(h264_encoder->pFormatCtx);
+            av_write_trailer(pFormatCtx);
 
             //Clean
-            if (h264_encoder->video_st) {
-                avcodec_close(h264_encoder->video_st->codec);
-                av_free(h264_encoder->pFrame);
+            if (video_st) {
+                avcodec_close(video_st->codec);
+                av_free(pFrame);
             }
-            avio_close(h264_encoder->pFormatCtx->pb);
-            avformat_free_context(h264_encoder->pFormatCtx);
-            delete h264_encoder;
+            avio_close(pFormatCtx->pb);
+            avformat_free_context(pFormatCtx);
             return 0;
         }
-        if (h264_encoder->frame_queue.empty()) {
-            continue;
-        }
-        uint8_t *picture_buf = *h264_encoder->frame_queue.wait_and_pop().get();
-        LOGI(JNI_DEBUG, "send_videoframe_count:%d", h264_encoder->frame_count);
-        int in_y_size = h264_encoder->arguments->in_width * h264_encoder->arguments->in_height;
 
-        h264_encoder->custom_filter(h264_encoder, picture_buf, in_y_size,
-                                    h264_encoder->arguments->v_custom_format);
+        EncData* dataPtr = NULL;
+		
+		WAutoLock l(&cs_list_enc_);
+
+	    if(lst_enc_data_.size() == 0)
+	        continue;
+			
+		if (lst_enc_data_.size() > 0) {
+			dataPtr = lst_enc_data_.front();
+			lst_enc_data_.pop_front();
+		}
+		
+        uint8_t *picture_buf = (unsigned char*)dataPtr->_data;
+        int in_y_size = arguments->in_width * arguments->in_height;
+
+        custom_filter(this, picture_buf, in_y_size,arguments->v_custom_format);
 
 
         //PTS
-        h264_encoder->pFrame->pts = h264_encoder->frame_count;
-        h264_encoder->frame_count++;
+        pFrame->pts = frame_count;
+        frame_count++;
         int got_picture = 0;
         //Encode
-        int ret = avcodec_encode_video2(h264_encoder->pCodecCtx, &h264_encoder->pkt,
-                                        h264_encoder->pFrame, &got_picture);
+        int ret = avcodec_encode_video2(pCodecCtx, &pkt,
+                                        pFrame, &got_picture);
         if (ret < 0) {
-            LOGE(JNI_DEBUG, "Failed to encode! \n");
+            LOGE(1, "Failed to encode! \n");
         }
         if (got_picture == 1) {
-            LOGI(JNI_DEBUG, "Succeed to encode frame: %5d\tsize:%5d\n", h264_encoder->framecnt,
-                 h264_encoder->pkt.size);
-            h264_encoder->framecnt++;
-            h264_encoder->pkt.stream_index = h264_encoder->video_st->index;
-            ret = av_write_frame(h264_encoder->pFormatCtx, &h264_encoder->pkt);
-            av_free_packet(&h264_encoder->pkt);
+            framecnt++;
+            pkt.stream_index = video_st->index;
+            ret = av_write_frame(pFormatCtx, &pkt);
+            av_free_packet(&pkt);
         }
-        delete (picture_buf);
+
+		delete[] dataPtr->_data;
+		delete dataPtr;
     }
-    if (h264_encoder->is_end) {
-        h264_encoder->encodeEnd();
-        delete h264_encoder;
+    if (is_end) {
+        encodeEnd();
     }
     return 0;
 }
@@ -236,7 +278,7 @@ void *VideoEncodeH264::startEncode(void *obj) {
  * @param format
  */
 void
-YUVEncodeH264::custom_filter(const JXYUVEncodeH264 *h264_encoder, const uint8_t *picture_buf,
+VideoEncodeH264::custom_filter(const VideoEncodeH264 *h264_encoder, const uint8_t *picture_buf,
                                int in_y_size, int format) {
 
 
@@ -343,7 +385,7 @@ int VideoEncodeH264::encodeEnd() {
     //Flush Encoder
     int ret_1 = flush_encoder(pFormatCtx, 0);
     if (ret_1 < 0) {
-        LOGE(JNI_DEBUG, "Flushing encoder failed\n");
+        LOGE(1, "Flushing encoder failed\n");
         return -1;
     }
 
@@ -358,9 +400,9 @@ int VideoEncodeH264::encodeEnd() {
     }
     avio_close(pFormatCtx->pb);
     avformat_free_context(pFormatCtx);
-    LOGI(JNI_DEBUG, "视频编码结束")
-    arguments->handler->setup_video_state(END_STATE);
-    arguments->handler->try_encode_over(arguments);
+    LOGI(1, "视频编码结束")
+    //arguments->handler->setup_video_state(END_STATE);
+    //arguments->handler->try_encode_over(arguments);
     return 1;
 }
 
@@ -368,8 +410,9 @@ int VideoEncodeH264::encodeEnd() {
  * 用户中断
  */
 void VideoEncodeH264::user_end() {
-    is_end = END_STATE;
+    is_end = true;
 }
 void VideoEncodeH264::release()  {
+	StopThread();
     is_release = true;
 }

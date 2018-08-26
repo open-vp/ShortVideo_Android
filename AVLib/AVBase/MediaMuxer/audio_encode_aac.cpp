@@ -1,11 +1,44 @@
 /**
  */
-#include "base.h"
 #include "audio_encode_aac.h"
-
 #include <pthread.h>
 
-AudioEncodeAAC::PCMEncodeAAC(UserArguments* arg):arguments(arg){
+extern "C"
+{
+static void* AudioThreadProc( void* arg )
+{
+	AudioEncodeAAC *pThread = (AudioEncodeAAC *)arg;
+
+	int dwRet = pThread->startEncode();
+	pThread->m_dwExitCode = dwRet;
+
+	return 0;
+}
+}
+
+bool AudioEncodeAAC::StartThread()
+{
+	if (!m_thrd ){ 
+		int nRet = pthread_create( &m_thrd,0,AudioThreadProc,this );
+		if( nRet != 0 )
+			return false;
+	}
+	return	m_thrd != 0;
+}
+
+void AudioEncodeAAC::StopThread()
+{
+	if ( m_thrd ){
+		
+		void *ignore = 0;
+		pthread_join( m_thrd,&ignore );
+		pthread_detach( m_thrd );
+	}
+
+	m_thrd=0;
+}
+
+AudioEncodeAAC::AudioEncodeAAC(UserArguments* arg){
 
 }
 
@@ -35,7 +68,7 @@ int AudioEncodeAAC::flush_encoder(AVFormatContext *fmt_ctx, unsigned int stream_
             ret = 0;
             break;
         }
-        LOGI(JNI_DEBUG,"Flush Encoder: Succeed to encode 1 frame!\tsize:%5d\n", enc_pkt.size);
+        LOGI(1,"Flush Encoder: Succeed to encode 1 frame!\tsize:%5d\n", enc_pkt.size);
         /* mux encoded frame */
         ret = av_write_frame(fmt_ctx, &enc_pkt);
         if (ret < 0)
@@ -49,7 +82,7 @@ int AudioEncodeAAC::flush_encoder(AVFormatContext *fmt_ctx, unsigned int stream_
  * @return
  */
 int AudioEncodeAAC::initAudioEncoder() {
-    LOGI(JNI_DEBUG,"音频编码器初始化开始")
+    LOGI(1,"音频编码器初始化开始")
     size_t path_length = strlen(arguments->audio_path);
     char *out_file=( char *)malloc(path_length+1);
 
@@ -63,15 +96,9 @@ int AudioEncodeAAC::initAudioEncoder() {
     pFormatCtx->oformat = fmt;
 
 
-//    Method 2.
-//    int a=avformat_alloc_output_context2(&pFormatCtx, NULL, NULL, out_file);
-//    fmt = pFormatCtx->oformat;
-//    pCodec = avcodec_find_encoder(AV_CODEC_ID_AAC);
-//  、  pCodecCtx = avcodec_alloc_context3(pCodec);
-
     //Open output URL
     if (avio_open(&pFormatCtx->pb, out_file, AVIO_FLAG_READ_WRITE) < 0) {
-        LOGE(JNI_DEBUG,"Failed to open output file!\n");
+        LOGE(1,"Failed to open output file!\n");
         return -1;
     }
 //    pFormatCtx->audio_codec_id=AV_CODEC_ID_AAC;
@@ -92,14 +119,14 @@ int AudioEncodeAAC::initAudioEncoder() {
 //    pCodecCtx->profile=FF_PROFILE_AAC_MAIN;
 
     int b= av_get_channel_layout_nb_channels(pCodecCtx->channel_layout);
-    LOGI(JNI_DEBUG,"channels:%d",b);
+    LOGI(1,"channels:%d",b);
 
     //Show some information
     av_dump_format(pFormatCtx, 0, out_file, 1);
     pCodec = avcodec_find_encoder(pCodecCtx->codec_id);
     if (!pCodec) {
 
-        LOGE(JNI_DEBUG,"Can not find encoder!\n");
+        LOGE(1,"Can not find encoder!\n");
         return -1;
     }
 
@@ -109,7 +136,7 @@ int AudioEncodeAAC::initAudioEncoder() {
 
     int state = avcodec_open2(pCodecCtx, pCodec, NULL);
     if (state < 0) {
-        LOGE(JNI_DEBUG,"Failed to open encoder!---%d",state);
+        LOGE(1,"Failed to open encoder!---%d",state);
         return -1;
     }
     pFrame = av_frame_alloc();
@@ -128,9 +155,10 @@ int AudioEncodeAAC::initAudioEncoder() {
 
     av_new_packet(&pkt, size);
     is_end=START_STATE;
-    pthread_t thread;
-    pthread_create(&thread, NULL, AudioEncodeAAC::startEncode, this);
-    LOGI(JNI_DEBUG,"音频编码器初始化完成")
+	
+	StartThread();
+	
+    LOGI(1,"音频编码器初始化完成")
     return 0;
 
 }
@@ -143,18 +171,30 @@ void AudioEncodeAAC::user_end(){
 }
 
 void AudioEncodeAAC::release(){
+	StopThread();
     is_release=true;
+	
 }
+
+
+
 /**
  * 发送一帧到编码队列
  * @param buf
  * @return
  */
-int AudioEncodeAAC::sendOneFrame(uint8_t* buf){
-    uint8_t *new_buf = (uint8_t *) malloc(size);
-    memcpy(new_buf,buf,size);
-    frame_queue.push(new_buf);
-    return 0;
+void AudioEncodeAAC::sendAudioFrame(uint8_t* buf,int dataLen)
+{
+
+	EncData* pdata = new EncData();
+	pdata->_data = new uint8_t[dataLen];
+	memcpy(pdata->_data, buf, dataLen);
+	pdata->_dataLen = dataLen;
+	pdata->_bVideo = false;
+	pdata->_type = AUDIO_DATA;
+	//pdata->_dts = ts;
+	WAutoLock l(&cs_list_enc_);
+	lst_enc_data_.push_back(pdata);
 }
 
 /**
@@ -165,7 +205,7 @@ int AudioEncodeAAC::encodeEnd(){
     //Flush Encoder
     ret = flush_encoder(pFormatCtx, 0);
     if (ret < 0) {
-        LOGE(JNI_DEBUG,"Flushing encoder failed\n");
+        LOGE(1,"Flushing encoder failed\n");
         return -1;
     }
 
@@ -180,61 +220,71 @@ int AudioEncodeAAC::encodeEnd(){
     }
     avio_close(pFormatCtx->pb);
     avformat_free_context(pFormatCtx);
-    LOGI(JNI_DEBUG,"音频编码完成")
-    arguments->handler->setup_audio_state(END_STATE);
-    arguments->handler->try_encode_over(arguments);
+    LOGI(1,"音频编码完成")
+    //arguments->handler->setup_audio_state(END_STATE);
+    //arguments->handler->try_encode_over(arguments);
 
     return 0;
 }
+
+
 
 /**
  * 开启编码线程
  * @param obj
  * @return
  */
- void * AudioEncodeAAC::startEncode(void* obj) {
-    AudioEncodeAAC *aac_encoder = (AudioEncodeAAC *)obj;
-    while (!aac_encoder->is_end||!aac_encoder->frame_queue.empty()) {
-        if(aac_encoder->is_release){
-            if (aac_encoder->audio_st) {
-                avcodec_close(aac_encoder->audio_st->codec);
-                av_free(aac_encoder->pFrame);
-//        av_free(frame_buf);
+int AudioEncodeAAC::startEncode() {
+    while (!is_end) {
+        if(is_release){
+            if (audio_st) {
+                avcodec_close(audio_st->codec);
+                av_free(pFrame);
             }
-            avio_close(aac_encoder->pFormatCtx->pb);
-            avformat_free_context(aac_encoder->pFormatCtx);
-            delete aac_encoder;
+            avio_close(pFormatCtx->pb);
+            avformat_free_context(pFormatCtx);
             return 0;
         }
+		
 
-        if(aac_encoder->frame_queue.empty()){
-            continue;
-        }
-        uint8_t *frame_buf = *aac_encoder->frame_queue.wait_and_pop().get();
+		EncData* dataPtr = NULL;
+		
+		WAutoLock l(&cs_list_enc_);
 
-        aac_encoder->pFrame->data[0]=frame_buf;
+	    if(lst_enc_data_.size() == 0)
+	        continue;
+			
+		if (lst_enc_data_.size() > 0) {
+			dataPtr = lst_enc_data_.front();
+			lst_enc_data_.pop_front();
+		}
+		
 
-        aac_encoder->pFrame->pts = aac_encoder->i ;
-        aac_encoder->i++;
-        aac_encoder->got_frame = 0;
-        //Encode
-        aac_encoder->ret = avcodec_encode_audio2(aac_encoder->pCodecCtx, &aac_encoder->pkt, aac_encoder->pFrame, &aac_encoder->got_frame);
-        if (aac_encoder->ret < 0) {
-            LOGE(JNI_DEBUG,"Failed to encode!\n");
-        }
+		if (dataPtr != NULL ) {
+			pFrame->data[0] = (unsigned char*)dataPtr->_data;
+	        pFrame->pts = i ;
+	        i++;
+	        got_frame = 0;
+	        //Encode
+	        ret = avcodec_encode_audio2(pCodecCtx, &pkt, pFrame, &got_frame);
+	        if (ret < 0) {
+	            LOGE(1,"Failed to encode!\n");
+	        }
 
-        if (aac_encoder->got_frame == 1) {
-            LOGI(JNI_DEBUG,"Succeed to encode 1 frame! \tsize:%5d\n", aac_encoder->pkt.size);
-            aac_encoder->pkt.stream_index = aac_encoder->audio_st->index;
-            aac_encoder->
-                    ret = av_write_frame(aac_encoder->pFormatCtx, &aac_encoder->pkt);
-            av_free_packet(&aac_encoder->pkt);
-        }
-        delete(frame_buf);
+	        if (got_frame == 1) {
+	            LOGI(1,"Succeed to encode 1 frame! \tsize:%5d\n", pkt.size);
+	            pkt.stream_index = audio_st->index;
+	            ret = av_write_frame(pFormatCtx, &pkt);
+	            av_free_packet(&pkt);
+	        }
+			
+		}
+
+		delete[] dataPtr->_data;
+		delete dataPtr;
     }
-    if (aac_encoder->is_end) {
-        aac_encoder->encodeEnd();
-        delete aac_encoder;
+    if (is_end) {
+        encodeEnd();
     }
     return 0;
 }
