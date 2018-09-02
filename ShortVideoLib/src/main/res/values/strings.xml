@@ -1,0 +1,13 @@
+<resources>
+
+    <string name="app_name">openvp_record</string>
+
+    <string name="hint">提示</string>
+    <string name="imageview_content_description"></string>
+    <string name="record_camera_progress_message">准备中…</string>
+    <string name="record_camera_exit_dialog_message">是否放弃这段视频？</string>
+    <string name="record_camera_cancel_dialog_yes">确定</string>
+    <string name="record_camera_cancel_dialog_no">取消</string>
+    <string name="record_video_transcoding_faild">视频转码失败</string>
+
+</resources>
